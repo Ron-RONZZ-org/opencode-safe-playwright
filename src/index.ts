@@ -659,7 +659,14 @@ Use ref from snapshot for stable element targeting.`,
 							const s = sessions.get(sessionID)
 							if (!s?.context) return "Error: No browser context"
 							const pageId = args.page_id || nextPageId(s)
-							const page = await s.context.newPage()
+							// Use existing default page if available, otherwise create a new one
+							const existing = s.context.pages()
+							let page: Page
+							if (existing.length > 0) {
+								page = existing[0]
+							} else {
+								page = await s.context.newPage()
+							}
 							s.pages.set(pageId, page)
 							s.currentPageId = pageId
 							s.refs.set(pageId, new Map())
