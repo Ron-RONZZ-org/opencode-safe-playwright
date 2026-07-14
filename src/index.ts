@@ -170,8 +170,21 @@ async function ensureBrowser(
 	touchActivity(sessionID)
 
 	if (s.context) {
-		// Switching from headless to headed requires restart
-		if (!headless && s.headless) {
+		// Check if context is still alive (Chromium process may have crashed)
+		let alive = false
+		try {
+			const pages = s.context.pages()
+			alive = pages.length > 0
+		} catch {
+			// pages() threw — context is dead
+			alive = false
+		}
+
+		if (!alive) {
+			// Dead context — stop and re-launch
+			await stopBrowser(sessionID)
+		} else if (!headless && s.headless) {
+			// Switching from headless to headed requires restart
 			await stopBrowser(sessionID)
 		} else {
 			startIdleWatchdog()
