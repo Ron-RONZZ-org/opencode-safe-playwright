@@ -1,0 +1,31 @@
+{
+  "name": "opencode-safe-playwright",
+  "version": "0.1.0",
+  "description": "Safe browser automation for opencode with per-session Chromium isolation",
+  "type": "module",
+  "exports": {
+    "./server": "./src/index.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "browser",
+    "playwright",
+    "automation",
+    "isolation",
+    "safety"
+  ],
+  "license": "MIT",
+  "author": "Rong Zhou",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rong-Zhou-FR/opencode-safe-playwright.git"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.17.20",
+    "playwright": "^1.61.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
