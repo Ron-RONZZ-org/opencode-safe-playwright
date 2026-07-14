@@ -680,40 +680,39 @@ Use ref from snapshot for stable element targeting.`,
 
 						if (action === "open") {
 							if (!args.url) return "Error: url required for open action"
-							const result = await ensureBrowser(sessionID)
-							if (!result.success) {
-								return `Error: Failed to start browser: ${result.error}`
-							}
-							const s = sessions.get(sessionID)
-							if (!s?.context) {
-								// Context is null — try re-launching
-								const relResult = await ensureBrowser(sessionID)
-								if (!relResult.success || !s?.context) {
-									return "Error: No browser context. Start the browser first with 'browser start' or 'browser_start'."
+							// Retry loop: try to get a page, restart on dead context
+							let lastError = ""
+							for (let attempt = 0; attempt < 2; attempt++) {
+								const result = await ensureBrowser(sessionID)
+								if (!result.success) {
+									return `Error: Failed to start browser: ${result.error}`
+								}
+								const sess = sessions.get(sessionID)
+								if (!sess?.context) {
+									if (attempt === 0) continue
+									return "Error: No browser context after retry"
+								}
+								const pageId = args.page_id || nextPageId(sess)
+								try {
+									// Use default page (about:blank) or create new one
+									const existing = sess.context.pages()
+									const page: Page = existing.length > 0
+										? existing[0]
+										: await sess.context.newPage()
+									sess.pages.set(pageId, page)
+									sess.currentPageId = pageId
+									sess.refs.set(pageId, new Map())
+									await page.goto(args.url, { timeout: args.timeout })
+									return `Opened ${args.url} (page_id: ${pageId})`
+								} catch (pageErr) {
+									lastError = pageErr instanceof Error ? pageErr.message : String(pageErr)
+									// Context is dead — stop, clean, and retry
+									await stopBrowser(sessionID)
+									const deadDir = sessionProfileDir(sessionID)
+									if (fs.existsSync(deadDir)) cleanBrowserProfile(deadDir)
 								}
 							}
-							const pageId = args.page_id || nextPageId(s!)
-							let page: Page
-							try {
-								const existing = s!.context!.pages()
-								if (existing.length > 0) {
-									page = existing[0]
-								} else {
-									page = await s!.context!.newPage()
-								}
-							} catch {
-								// Context is dead — restart and retry
-								const relResult = await ensureBrowser(sessionID)
-								if (!relResult.success || !s?.context) {
-									return `Error: Failed to start browser: ${relResult.error || 'unknown'}`
-								}
-								page = s.context.pages()[0] ?? await s.context.newPage()
-							}
-							s!.pages.set(pageId, page)
-							s!.currentPageId = pageId
-							s!.refs.set(pageId, new Map())
-							await page.goto(args.url, { timeout: args.timeout })
-							return `Opened ${args.url} (page_id: ${pageId})`
+							return `Error: Failed to open page: ${lastError}`
 						}
 
 						if (action === "navigate") {
