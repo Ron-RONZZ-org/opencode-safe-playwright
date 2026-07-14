@@ -1015,22 +1015,20 @@ diagnose browser issues before attempting to use the browser tool.`,
 		// -------------------------------------------------------------------------
 		"tool.execute.before": async (input) => {
 			if (!input.tool.startsWith("browser")) return
-			// Clean stale lock files from this session's profile if it exists
 			if (input.sessionID) {
 				const s = sessions.get(input.sessionID)
 				if (s?.context) {
-					// Context is alive — just touch activity time
+					// Context is alive — touch activity, do NOT kill processes
 					touchActivity(input.sessionID)
 				} else {
-					// No active context — clean up stale profile
+					// No active context — clean stale profile and kill orphans
 					const profileDir = sessionProfileDir(input.sessionID)
 					if (fs.existsSync(profileDir)) {
 						cleanBrowserProfile(profileDir)
 					}
+					killZombieChromes()
 				}
 			}
-			// Global cleanup: kill orphaned processes
-			killZombieChromes()
 		},
 
 		// -------------------------------------------------------------------------
@@ -1048,14 +1046,15 @@ diagnose browser issues before attempting to use the browser tool.`,
 		// -------------------------------------------------------------------------
 		event: async ({ event }) => {
 			if (event.type === "session.idle" || event.type === "session.deleted") {
-				// Destroy browser for this specific session
+				// Destroy browser for this specific session only
 				const sessionID = (event as any).sessionID
 				if (sessionID && sessions.has(sessionID)) {
 					await stopBrowser(sessionID)
 					destroySession(sessionID)
 				}
-				// Also kill any remaining orphaned processes
-				killZombieChromes()
+				// Do NOT call killZombieChromes here — it would kill
+				// other sessions' browsers. Orphaned processes from
+				// crashed sessions are cleaned up on next fresh start.
 			}
 		},
 	}
