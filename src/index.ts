@@ -21,7 +21,7 @@
  */
 
 import { type Plugin, tool } from "@opencode-ai/plugin"
-import { chromium, type Page, type BrowserContext } from "playwright"
+import { chromium, type Page, type BrowserContext, type Browser } from "playwright"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import * as os from "node:os"
@@ -164,7 +164,6 @@ interface BrowserResult {
 
 async function ensureBrowser(
 	sessionID: string,
-	headless = true,
 ): Promise<BrowserResult> {
 	const s = getOrCreateSession(sessionID)
 	touchActivity(sessionID)
@@ -188,9 +187,6 @@ async function ensureBrowser(
 			if (fs.existsSync(deadProfileDir)) {
 				cleanBrowserProfile(deadProfileDir)
 			}
-		} else if (!headless && s.headless) {
-			// Switching from headless to headed requires restart
-			await stopBrowser(sessionID)
 		} else {
 			startIdleWatchdog()
 			return { success: true }
@@ -198,19 +194,24 @@ async function ensureBrowser(
 	}
 
 	try {
-		s.headless = headless
+		// Always use the full Chrome with --headless arg to avoid chrome-headless-shell
+		// zygote crash on some Linux distributions. We use headless: false to prevent
+		// Playwright from auto-selecting the headless shell, and --headless in args to
+		// actually run the full Chrome in headless mode.
+		s.headless = false
 		const profileDir = sessionProfileDir(sessionID)
 		if (!fs.existsSync(profileDir)) {
 			fs.mkdirSync(profileDir, { recursive: true })
 		}
 
-		// Use the full Chrome executable path to avoid chrome-headless-shell zygote crashes
-		// on certain Linux distributions (Debian/Mint). The headless shell has a known
-		// issue where the zygote process crashes with "Socket closed prematurely".
-		const chromeExec = chromium.executablePath()
+		// Use headless: false + --headless arg to force the full Chrome binary instead of
+		// chrome-headless-shell. The headless shell has a known zygote crash issue on
+		// some Linux distributions ("Socket closed prematurely"). Setting headless: false
+		// prevents Playwright from auto-selecting the headless shell; --headless in args
+		// tells the full Chrome to run in headless mode.
 		s.context = await chromium.launchPersistentContext(profileDir, {
-			headless,
-			executablePath: chromeExec,
+			headless: false,
+			args: ["--headless", "--no-sandbox", "--disable-gpu"],
 			viewport: { width: 1280, height: 720 },
 		})
 		// Register page event handler for new tabs
@@ -659,8 +660,7 @@ Use ref from snapshot for stable element targeting.`,
 						touchActivity(sessionID)
 
 						if (action === "start") {
-							const headless = !(args.headed ?? false)
-							const result = await ensureBrowser(sessionID, headless)
+							const result = await ensureBrowser(sessionID)
 							if (!result.success) {
 								return `Failed to start browser: ${result.error}. Make sure Playwright is installed: bunx playwright install chromium`
 							}
@@ -851,8 +851,7 @@ Use ref from snapshot for stable element targeting.`,
 				},
 				async execute(args, context) {
 					const sessionID = context.sessionID
-					const headless = !args.headed
-					const result = await ensureBrowser(sessionID, headless)
+					const result = await ensureBrowser(sessionID)
 					return result.success
 						? `Browser started in ${args.headed ? "visible" : "headless"} mode`
 						: `Failed to start browser: ${result.error}`
