@@ -657,19 +657,33 @@ Use ref from snapshot for stable element targeting.`,
 								return `Error: Failed to start browser: ${result.error}`
 							}
 							const s = sessions.get(sessionID)
-							if (!s?.context) return "Error: No browser context"
-							const pageId = args.page_id || nextPageId(s)
-							// Use existing default page if available, otherwise create a new one
-							const existing = s.context.pages()
-							let page: Page
-							if (existing.length > 0) {
-								page = existing[0]
-							} else {
-								page = await s.context.newPage()
+							if (!s?.context) {
+								// Context is null — try re-launching
+								const relResult = await ensureBrowser(sessionID)
+								if (!relResult.success || !s?.context) {
+									return "Error: No browser context. Start the browser first with 'browser start' or 'browser_start'."
+								}
 							}
-							s.pages.set(pageId, page)
-							s.currentPageId = pageId
-							s.refs.set(pageId, new Map())
+							const pageId = args.page_id || nextPageId(s!)
+							let page: Page
+							try {
+								const existing = s!.context!.pages()
+								if (existing.length > 0) {
+									page = existing[0]
+								} else {
+									page = await s!.context!.newPage()
+								}
+							} catch {
+								// Context is dead — restart and retry
+								const relResult = await ensureBrowser(sessionID)
+								if (!relResult.success || !s?.context) {
+									return `Error: Failed to start browser: ${relResult.error || 'unknown'}`
+								}
+								page = s.context.pages()[0] ?? await s.context.newPage()
+							}
+							s!.pages.set(pageId, page)
+							s!.currentPageId = pageId
+							s!.refs.set(pageId, new Map())
 							await page.goto(args.url, { timeout: args.timeout })
 							return `Opened ${args.url} (page_id: ${pageId})`
 						}
