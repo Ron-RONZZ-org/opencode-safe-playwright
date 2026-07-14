@@ -204,21 +204,15 @@ async function ensureBrowser(
 			fs.mkdirSync(profileDir, { recursive: true })
 		}
 
+		// Use the full Chrome executable path to avoid chrome-headless-shell zygote crashes
+		// on certain Linux distributions (Debian/Mint). The headless shell has a known
+		// issue where the zygote process crashes with "Socket closed prematurely".
+		const chromeExec = chromium.executablePath()
 		s.context = await chromium.launchPersistentContext(profileDir, {
 			headless,
+			executablePath: chromeExec,
 			viewport: { width: 1280, height: 720 },
 		})
-		// Verify context is alive right after launch
-		try {
-			const welcomePages = s.context.pages()
-			if (welcomePages.length === 0) {
-				console.error('[browser-safety] WARNING: context.pages() empty after fresh launch')
-			}
-		} catch (e: unknown) {
-			const errMsg = e instanceof Error ? e.message : String(e)
-			console.error(`[browser-safety] ERROR: context died immediately after launch: ${errMsg}`)
-		}
-
 		// Register page event handler for new tabs
 		s.context.on("page", (page) => {
 			const pageId = nextPageId(s)
