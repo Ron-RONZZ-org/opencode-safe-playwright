@@ -183,6 +183,11 @@ async function ensureBrowser(
 		if (!alive) {
 			// Dead context — stop and re-launch
 			await stopBrowser(sessionID)
+			// Clean profile directory before relaunch (remove stale locks)
+			const deadProfileDir = sessionProfileDir(sessionID)
+			if (fs.existsSync(deadProfileDir)) {
+				cleanBrowserProfile(deadProfileDir)
+			}
 		} else if (!headless && s.headless) {
 			// Switching from headless to headed requires restart
 			await stopBrowser(sessionID)
@@ -203,6 +208,16 @@ async function ensureBrowser(
 			headless,
 			viewport: { width: 1280, height: 720 },
 		})
+		// Verify context is alive right after launch
+		try {
+			const welcomePages = s.context.pages()
+			if (welcomePages.length === 0) {
+				console.error('[browser-safety] WARNING: context.pages() empty after fresh launch')
+			}
+		} catch (e: unknown) {
+			const errMsg = e instanceof Error ? e.message : String(e)
+			console.error(`[browser-safety] ERROR: context died immediately after launch: ${errMsg}`)
+		}
 
 		// Register page event handler for new tabs
 		s.context.on("page", (page) => {
